@@ -291,9 +291,11 @@ class NeuralNetwork:
         output: np.array,
         hidden_layer: int,
         layer_sizes: (list[int] | list[float]) = [10],
+        distribution: "np.random.callable" = np.random.rand, 
+        initialization = None, 
         activation_function: callable = sigmoid,
         activation_derivative: callable = derivative_sigmoid,
-        cost: callable = None,
+        cost_function: callable = None,
         dtype: type = float,
     ) -> "NeuralNetwork":
         self.input = input
@@ -304,19 +306,19 @@ class NeuralNetwork:
             [[len(input[0])], layer_sizes, [len(output[0])]]
         )
         self.bias = [
-            np.random.randn(self.layer_sizes[i])
+            distribution(self.layer_sizes[i])
             for i in range(1, self.hidden_layer_n + 2)
         ]
 
         self.weights = [
-            np.random.randn(self.layer_sizes[i], self.layer_sizes[i - 1])
+            distribution(self.layer_sizes[i], self.layer_sizes[i - 1])
             * np.sqrt(1 / self.layer_sizes[i - 1])
             for i in range(1, self.hidden_layer_n + 2)
         ]
 
         self.activation_f = activation_function
         self.activation_df = activation_derivative
-        self.cost_function = cost
+        self.cost_function = cost_function
 
     def train(
         self,
