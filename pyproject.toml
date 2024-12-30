@@ -58,7 +58,7 @@ file = "README.md"
 content-type = "text/markdown"
 
 [project.scripts]
-vhpc = "vhpc.__main__:main"
+vhpc = "neural_network.__main__:main"
 
 [tool.isort]
 profile = "black"
@@ -129,4 +129,4 @@ dist_glob_patterns = ["dist/*"]
 upload_to_vcs_release = true
 
 [tool.setuptools.package-dir]
-vhpc = "src"
+neural_network = "src"

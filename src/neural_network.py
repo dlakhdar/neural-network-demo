@@ -1,4 +1,3 @@
-import jax.numpy as jnp
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
@@ -6,7 +5,7 @@ import tensorflow as tf
 # TODO: produce help strings
 # TODO: better type annotation
 # TODO: implement different initializations
-# TODO: decouple input output from init method in class
+# TODO: decouple input output from init method in class (done)
 # TODO: implement AD with jax
 # TODO: eliminate use of lists , optimize with jax and numba
 # TODO: implement momentum, adam
@@ -29,6 +28,16 @@ def gaussian_normalize(data):
 
 
 # @nb.jit()
+
+
+def relu(z):
+    return np.maximum(0, z)
+
+
+def derivative_relu(z):
+    return np.where(z > 0, 1, 0)
+
+
 def sigmoid(z: (int | float)) -> (int | float, np.array):
     """
     Computes the sigmoid of a given input.
@@ -78,6 +87,10 @@ def derivative_sigmoid(z: (int | float)) -> (int | float, "np.array"):
     return sig(z) * (1 - sig(z))
 
 
+def mse_grad(a: np.array, y: np.array) -> np.array:
+    return a - y
+
+
 def hot_encode(x: np.array, output_length: (int | float)) -> np.array:
     """
     Converts an array of integer indices into one-hot encoded vectors.
@@ -87,7 +100,8 @@ def hot_encode(x: np.array, output_length: (int | float)) -> np.array:
         output_length (int): Length of the one-hot encoded vectors.
 
     Returns:
-        np.array: A 2D array where each row is a one-hot encoded vector corresponding to the input indices.
+        np.array: A 2D array where each row is a one-hot encoded vector
+        corresponding to the input indices.
     """
     tmp = []
     for index in x:
@@ -112,7 +126,8 @@ def feedforward(
     x : np.array
         The input array to the neural network. Typically a vector or batch of vectors.
     σ : callable
-        The activation function applied element-wise at each layer (e.g., ReLU, sigmoid, or tanh).
+        The activation function applied element-wise at each layer
+          (e.g., ReLU, sigmoid, or tanh).
     n : int | float
         The number of layers in the neural network. Assumes layers are indexed from 0 to n-1.
     W : NeuralNetwork.weights
@@ -141,7 +156,8 @@ def feedforward(
     ...     return np.maximum(0, x)
     ...
     >>> x = np.array([1, 2])
-    >>> W = [np.array([[0.1, 0.2], [0.3, 0.4]]), np.array([[0.5, 0.6]])]
+    >>> W = [np.array([[0.1, 0.2], [0.3, 0.4]]),
+      np.array([[0.5, 0.6]])]
     >>> b = [np.array([0.1, 0.2]), np.array([0.3])]
     >>> feedforward(x, relu, 2, W, b)
     array([0.77])  # Example output
@@ -154,45 +170,45 @@ def feedforward(
     return activation
 
 
-def store_intermediate(feedforward):
-    """
-    Decorator to modify the feedforward method to store intermediate activations.
+# def store_intermediate(feedforward):
+#     """
+#     Decorator to modify the feedforward method to store intermediate activations.
 
-    Parameters
-    ----------
-    feedforward_func : function
-        The original feedforward function to be wrapped.
+#     Parameters
+#     ----------
+#     feedforward_func : function
+#         The original feedforward function to be wrapped.
 
-    Returns
-    -------
-    function
-        A new function that stores intermediate activations.
-    """
+#     Returns
+#     -------
+#     function
+#         A new function that stores intermediate activations.
+#     """
 
-    @wraps(feedforward)
-    def wrapper(x, σ, n, W, b):
-        # List to store intermediate activations
-        A = []
-        Z = []
-        # Perform the forward pass, storing intermediate activations at each layer
-        z0 = W[0] @ x + b[0]
-        a0 = σ(z0)
-        a = a0
-        Z.append(z0)
-        A.append(a0)  # Store the first activation
-        for l in range(1, n):
-            z = W[l] @ a + b[l]
-            a = σ(z)
-            Z.append(z)
-            A.append(a)  # Store the activation at each layer
+#     @wraps(feedforward)
+#     def wrapper(x, σ, n, W, b):
+#         # List to store intermediate activations
+#         A = []
+#         Z = []
+#         # Perform the forward pass, storing intermediate activations at each layer
+#         z0 = W[0] @ x + b[0]
+#         a0 = σ(z0)
+#         a = a0
+#         Z.append(z0)
+#         A.append(a0)  # Store the first activation
+#         for l in range(1, n):
+#             z = W[l] @ a + b[l]
+#             a = σ(z)
+#             Z.append(z)
+#             A.append(a)  # Store the activation at each layer
 
-        # Call the original feedforward function (return final result)
-        result = a
+#         # Call the original feedforward function (return final result)
+#         result = a
 
-        # Return the result and the list of intermediate activations
-        return result, A, Z
+#         # Return the result and the list of intermediate activations
+#         return result, A, Z
 
-    return wrapper
+#     return wrapper
 
 
 def prepare_data(dataset="mnist", normalize_scheme=max_normalize):
@@ -201,7 +217,8 @@ def prepare_data(dataset="mnist", normalize_scheme=max_normalize):
 
     Parameters:
         dataset (str): Name of the dataset to load from tf.keras.datasets (default: 'mnist').
-        normalize_scheme (function): Function to normalize the dataset (default: max_normalize).
+        normalize_scheme (function): Function to normalize the dataset 
+        (default: max_normalize).
 
     Returns:
         tuple: Preprocessed training and testing data:
@@ -287,46 +304,40 @@ class NeuralNetwork:
 
     def __init__(
         self,
-        input: np.array,
-        output: np.array,
-        hidden_layer: int,
         layer_sizes: (list[int] | list[float]) = [10],
-        distribution: "np.random.callable" = np.random.rand, 
-        initialization = None, 
         activation_function: callable = sigmoid,
         activation_derivative: callable = derivative_sigmoid,
         cost_function: callable = None,
-        dtype: type = float,
+        cost_grad: callable = mse_grad,
     ) -> "NeuralNetwork":
-        self.input = input
-        self.output = output
-        self.hidden_layer_n = hidden_layer
-        self.layer_n = self.hidden_layer_n + 2
-        self.layer_sizes = np.concatenate(
-            [[len(input[0])], layer_sizes, [len(output[0])]]
-        )
+        self.layer_sizes = layer_sizes
+        self.layer_n = len(self.layer_sizes)
+        self.hidden_layer_n = len(self.layer_sizes) - 2
         self.bias = [
-            distribution(self.layer_sizes[i])
+            np.random.randn(self.layer_sizes[i])
             for i in range(1, self.hidden_layer_n + 2)
         ]
 
         self.weights = [
-            distribution(self.layer_sizes[i], self.layer_sizes[i - 1])
+            np.random.randn(self.layer_sizes[i], self.layer_sizes[i - 1])
             * np.sqrt(1 / self.layer_sizes[i - 1])
             for i in range(1, self.hidden_layer_n + 2)
         ]
 
         self.activation_f = activation_function
         self.activation_df = activation_derivative
-        self.cost_function = cost_function
+        self.cost = cost_function
+        self.cost_grad = cost_grad
 
     def train(
         self,
+        input,
+        output,
         minibatch: bool = True,
         minibatch_pool: (int | float) = 10,
         iterations: (int | float) = 100,
         η: (int | float) = 1e-6,
-    ) -> "NeuralNetwork":
+    ) -> None:
         """
         Trains the neural network using gradient descent.
 
@@ -348,12 +359,13 @@ class NeuralNetwork:
         Example:
             nn.train(minibatch=True, minibatch_pool=32, iterations=1000, η=0.01)
         """
+
         for _ in range(iterations):
             if minibatch:
-                indexes = np.random.choice(self.input.shape[0], size=minibatch_pool)
-                X, Y = self.input[indexes], self.output[indexes]
+                indexes = np.random.choice(input.shape[0], size=minibatch_pool)
+                X, Y = input[indexes], output[indexes]
             else:
-                X, Y = self.input, self.output
+                X, Y = input, output
 
             a_errors = [np.zeros(matrix.shape) for matrix in self.weights]
 
@@ -377,11 +389,13 @@ class NeuralNetwork:
 
                 z_output = zs[-1]
                 a_output = activations[-1]
-                output_error = (a_output - y) * self.activation_df(z_output)
+                output_error = self.cost_grad(a_output, y) * self.activation_df(
+                    z_output
+                )
                 errors = [output_error]
                 for l in range(self.hidden_layer_n, 0, -1):
                     error = (
-                        self.weights[l].T @ errors[-1] * derivative_sigmoid(zs[l - 1])
+                        self.weights[l].T @ errors[-1] * self.activation_df(zs[l - 1])
                     )
                     errors.append(error)
 
@@ -437,12 +451,18 @@ class NeuralNetwork:
 
 if __name__ == "__main__":
     x_train, y_train, x_test, y_test = prepare_data()
+    input_n = x_train.shape[1]
+    output_n = y_train.shape[1]
 
-    net = NeuralNetwork(x_train, y_train, 2, [128, 64])
+    # net = NeuralNetwork([input_n,128, 64,output_n],
+    #                     cost_grad=lambda a, y: (a-y)/(a*(1-a)),
+    #                     activation_derivative=lambda a: a*(1-a))
+
+    net = NeuralNetwork([input_n, 128, 64, output_n])
 
     validation_rate = []
-    for run in range(0, 100):
-        net.train(minibatch_pool=32, iterations=5, η=3)
+    for run in range(0, 500):
+        net.train(x_train, y_train, minibatch_pool=32, iterations=5, η=3)
         results = net.predict(x_test)
         rate = np.sum(
             np.array(list(map(np.argmax, results)))
@@ -453,10 +473,12 @@ if __name__ == "__main__":
     plt.figure(figsize=(12, 8))
     plt.plot(validation_rate, label=r"η=3", color="pink")
     plt.title(r"Training: Epoch vrs. Validation Rate")
-    plt.xlabel("epoch (5 x each)")
+    plt.xlabel("Epoch (5 x each)")
     plt.ylabel("Validation Rate (%)")
-    ticks = np.arange(0, 101, 10)
-    plt.xticks(ticks, labels=ticks.astype(str), minor=True)
-    plt.yticks(ticks, labels=ticks.astype(str), minor=True)
+    x_ticks = np.arange(0, 1001, 100)
+    y_ticks = np.arange(0, 101, 10)
+    plt.xticks(x_ticks, labels=x_ticks.astype(str), minor=True)
+    plt.yticks(y_ticks, labels=y_ticks.astype(str), minor=True)
     plt.grid()
+    plt.legend()
     plt.show()
