@@ -1,13 +1,12 @@
 import numpy as np
 import pytest
+from neuralnet import NeuralNetwork, feedforward, sigmoid
 
-from src.neural_network import NeuralNetwork, feedforward, sigmoid
 
-
+@pytest.mark.order(3)
 def test_feedforward():
     mock_x = np.array([[1, 2]])
-    mock_y = np.array([[13, 24]])
-    net = NeuralNetwork(mock_x, mock_y, 2, [2, 2])
+    net = NeuralNetwork([2, 2, 2, 2])
 
     # reassign explicitly defined weight matrices
     net.weights[0] = np.array([[0.5, 0.6], [0.8, 0.9]])

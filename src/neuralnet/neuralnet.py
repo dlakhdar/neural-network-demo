@@ -1,44 +1,68 @@
 import matplotlib.pyplot as plt
+from numba import njit
 import numpy as np
 import tensorflow as tf
 
 # TODO: produce help strings
 # TODO: better type annotation
 # TODO: implement different initializations
-# TODO: decouple input output from init method in class (done)
 # TODO: implement AD with jax
 # TODO: eliminate use of lists , optimize with jax and numba
-# TODO: implement momentum, adam
-# TODO: implement convolutional network
+# TODO: implement adam
+# TODO: add a seed option 
+# TODO: 
+# TODO: add grad method , returns grad of neural network 
 
 fire = 1
 output_length = 10
 
 
-def magnitude(x: np.array) -> int | float:
+@njit
+def magnitude(x: np.ndarray) -> int | float:
     return np.sqrt(np.sum(x**2))
 
 
-def max_normalize(data):
+@njit
+def max_normalize(data: np.ndarray):
     return data / np.max(data)
 
 
-def gaussian_normalize(data):
+@njit
+def gaussian_normalize(data: np.ndarray):
     return (data - np.mean(data, axis=0)) / (np.std(data, axis=0) + 1e-8)
 
 
-# @nb.jit()
+@njit
+def calculate_validation_rate(predicted_y: list[np.ndarray], y: list[np.ndarray]):
+    """
+    Calculate the validation rate (accuracy) for predicted and actual labels.
+
+    Parameters:
+    - predicted_y: array-like, predicted probabilities or logits (e.g., from a neural network).
+    - y: array-like, one-hot encoded true labels.
+
+    Returns:
+    - float, the accuracy rate as the proportion of correctly predicted samples.
+    """
+    predicted_indices = np.array(list(map(np.argmax, predicted_y)))
+    true_indices = np.array(list(map(np.argmax, y)))
+    correct_predictions = np.sum(predicted_indices == true_indices)
+    accuracy = correct_predictions / len(y)
+    return accuracy
 
 
-def relu(z):
+@njit
+def relu(z: (int | float | np.ndarray)) -> (int | float | np.ndarray):
     return np.maximum(0, z)
 
 
-def derivative_relu(z):
+@njit
+def derivative_relu(z: (int | float | np.ndarray)) -> (int | float | np.ndarray):
     return np.where(z > 0, 1, 0)
 
 
-def sigmoid(z: (int | float)) -> (int | float, np.array):
+@njit
+def sigmoid(z: int | float | np.ndarray) -> (int | float | np.ndarray):
     """
     Computes the sigmoid of a given input.
 
@@ -62,7 +86,8 @@ def sigmoid(z: (int | float)) -> (int | float, np.array):
     return 1 / (1 + np.exp(-z))
 
 
-def derivative_sigmoid(z: (int | float)) -> (int | float, "np.array"):
+@njit
+def derivative_sigmoid(z: (int | float | np.ndarray)) -> (int | float | np.ndarray):
     """
     Computes the derivative of of a given input.
 
@@ -87,11 +112,13 @@ def derivative_sigmoid(z: (int | float)) -> (int | float, "np.array"):
     return sig(z) * (1 - sig(z))
 
 
-def mse_grad(a: np.array, y: np.array) -> np.array:
+@njit
+def mse_grad(a: np.ndarray, y: np.ndarray) -> np.ndarray:
     return a - y
 
 
-def hot_encode(x: np.array, output_length: (int | float)) -> np.array:
+@njit
+def hot_encode(x: np.ndarray, output_length: (int | float)) -> np.ndarray:
     """
     Converts an array of integer indices into one-hot encoded vectors.
 
@@ -110,14 +137,14 @@ def hot_encode(x: np.array, output_length: (int | float)) -> np.array:
         tmp.append(x_vec.reshape((output_length)))
     return np.array(tmp)
 
-
+@njit
 def feedforward(
-    x: np.array,
+    x: np.ndarray,
     σ: callable,
     n: (int | float),
     W: "NeuralNetwork.weights",
     b: "NeuralNetwork.bias",
-) -> np.array:
+) -> np.ndarray:
     """
     Perform a feedforward computation in a neural network.
 
@@ -170,48 +197,96 @@ def feedforward(
     return activation
 
 
-# def store_intermediate(feedforward):
-#     """
-#     Decorator to modify the feedforward method to store intermediate activations.
+@njit
+def backpropagation(x, y, weights, biases, activation_f, activation_df, cost_grad):
+    """
+    Performs backpropagation for a single training example in a neural network.
 
-#     Parameters
-#     ----------
-#     feedforward_func : function
-#         The original feedforward function to be wrapped.
+    Backpropagation calculates the gradients of the weights and biases with respect
+    to the loss function, enabling optimization of the network during training.
 
-#     Returns
-#     -------
-#     function
-#         A new function that stores intermediate activations.
-#     """
+    Parameters
+    ----------
+    x : np.ndarray
+        The input vector for the training example.
+    y : np.ndarray
+        The target output vector for the training example.
+    weights : list of np.ndarray
+        A list of weight matrices for each layer in the neural network.
+        Each matrix has dimensions (neurons in current layer, neurons in previous layer).
+    biases : list of np.ndarray
+        A list of bias vectors for each layer in the neural network.
+        Each vector has dimensions (neurons in current layer, ).
+    activation_f : callable
+        The activation function to apply at each layer (e.g., sigmoid, ReLU).
+    activation_df : callable
+        The derivative of the activation function used for backpropagation.
+    cost_grad : callable
+        The gradient of the cost function with respect to the activations at the output layer.
 
-#     @wraps(feedforward)
-#     def wrapper(x, σ, n, W, b):
-#         # List to store intermediate activations
-#         A = []
-#         Z = []
-#         # Perform the forward pass, storing intermediate activations at each layer
-#         z0 = W[0] @ x + b[0]
-#         a0 = σ(z0)
-#         a = a0
-#         Z.append(z0)
-#         A.append(a0)  # Store the first activation
-#         for l in range(1, n):
-#             z = W[l] @ a + b[l]
-#             a = σ(z)
-#             Z.append(z)
-#             A.append(a)  # Store the activation at each layer
+    Returns
+    -------
+    w_grads : list of np.ndarray
+        Gradients of the weight matrices for each layer. Each matrix matches the dimensions
+        of the corresponding weight matrix in `weights`.
+    b_grads : list of np.ndarray
+        Gradients of the bias vectors for each layer. Each vector matches the dimensions
+        of the corresponding bias vector in `biases`.
 
-#         # Call the original feedforward function (return final result)
-#         result = a
+    Notes
+    -----
+    - Forward propagation is performed to compute the activations and pre-activations (z-values)
+      for all layers.
+    - Backward propagation uses these values to compute errors at each layer.
+    - Gradients for weights and biases are computed using these errors and activations.
 
-#         # Return the result and the list of intermediate activations
-#         return result, A, Z
+    Example
+    -------
+    >>> import numpy as np
+    >>> from numba import njit
+    >>> def sigmoid(z):
+    ...     return 1 / (1 + np.exp(-z))
+    ...
+    >>> def derivative_sigmoid(z):
+    ...     sig = sigmoid(z)
+    ...     return sig * (1 - sig)
+    ...
+    >>> x = np.array([1, 0.5])
+    >>> y = np.array([0])
+    >>> weights = [np.array([[0.1, 0.2], [0.3, 0.4]]), np.array([[0.5, 0.6]])]
+    >>> biases = [np.array([0.1, 0.2]), np.array([0.3])]
+    >>> w_grads, b_grads = backpropagation(
+    ...     x, y, weights, biases, sigmoid, derivative_sigmoid, lambda a, y: a - y
+    ... )
+    >>> w_grads
+    [array([...]), array([...])]
+    >>> b_grads
+    [array([...]), array([...])]
+    """
+    zs = []
+    activations = [x]
+    
+    # Forward pass
+    for l in range(len(weights)):
+        z = weights[l] @ activations[-1] + biases[l]
+        zs.append(z)
+        activations.append(activation_f(z))
+    
+    # Backward pass
+    errors = [cost_grad(activations[-1], y) * activation_df(zs[-1])]
+    for l in range(len(weights) - 1, 0, -1):
+        errors.append(weights[l].T @ errors[-1] * activation_df(zs[l - 1]))
+    errors.reverse()
+    
+    # Gradient computation
+    w_grads = [np.outer(errors[l], activations[l]) for l in range(len(weights))]
+    b_grads = [errors[l] for l in range(len(biases))]
+    
+    return w_grads, b_grads
 
-#     return wrapper
 
-
-def prepare_data(dataset="mnist", normalize_scheme=max_normalize):
+def prepare_data(dataset: "tf.keras.datasets" = "mnist",
+                 normalize_scheme: callable = max_normalize) -> tuple[np.ndarray] :
     """
     Prepares and preprocesses a dataset for training and testing.
 
@@ -281,7 +356,7 @@ class NeuralNetwork:
         activation_function (callable): Activation function for all layers (default: sigmoid).
         activation_derivative (callable): Derivative of the activation function (default: derivative_sigmoid).
         cost (callable): Cost function to minimize during training (optional).
-        dtype (type): Data type for the network parameters (default: float).
+        cost_grad (callable): Cost function gradient with respect to activations solely 
 
     Train Method Parameters:
         minibatch (bool): Whether to use mini-batch gradient descent (default: True).
@@ -293,10 +368,8 @@ class NeuralNetwork:
         NeuralNetwork: The trained neural network object.
 
     Example:
-        nn = NeuralNetwork(input=x_train,
-                           output=y_train,
-                           hidden_layer=2,
-                           layer_sizes=[64, 32],
+        nn = NeuralNetwork(
+                           layer_sizes=[10,64, 32,1],
                            activation_function=sigmoid,
                            activation_derivative=derivative_sigmoid)
         nn.train(minibatch=True, minibatch_pool=32, iterations=1000, η=0.01)
@@ -333,6 +406,7 @@ class NeuralNetwork:
         self,
         input,
         output,
+        momentum: (int | float) = None, 
         minibatch: bool = True,
         minibatch_pool: (int | float) = 10,
         iterations: (int | float) = 100,
@@ -367,14 +441,19 @@ class NeuralNetwork:
             else:
                 X, Y = input, output
 
-            a_errors = [np.zeros(matrix.shape) for matrix in self.weights]
+            w_grads = [np.zeros(matrix.shape) for matrix in self.weights]
 
-            b_errors = [np.zeros(vector.shape) for vector in self.bias]
+            b_grads = [np.zeros(vector.shape) for vector in self.bias]
+
+            if momentum is not None:
+                v = [ np.zeros(w.shape) for w in self.weights]
 
             # iterate for each set of x and y
             # find zs and as (pre-act and activation)
             for x, y in zip(X, Y):
                 # print("x id:",id(x))
+
+                # def feedforward 
                 z0 = self.weights[0] @ x + self.bias[0]
                 zs = [z0]
                 a0 = self.activation_f(z0)
@@ -402,20 +481,27 @@ class NeuralNetwork:
                 errors.reverse()
                 # compute sum of error
                 for l in range(0, self.hidden_layer_n + 1, 1):
-                    # a_errors[l] += errors[l]@activations[l].T
-                    a_errors[l] += np.outer(
+                    # w_grads[l] += errors[l]@activations[l].T
+                    w_grads[l] += np.outer(
                         errors[l], activations[l - 1] if l > 0 else x
                     )
-                    # print(a_errors)
-                    b_errors[l] += errors[l]
-                    # print(b_errors)
+                    # print(w_grads)
+                    b_grads[l] += errors[l]
+                    # print(b_grads)
 
             # gradient descent
-            for l in range(0, self.hidden_layer_n + 1):
-                self.weights[l] -= η / minibatch_pool * a_errors[l]
-                self.bias[l] -= η / minibatch_pool * b_errors[l]
-
-    def predict(self, input: list[np.array]) -> list[np.array]:
+            if momentum == None: 
+                for l in range(0, self.hidden_layer_n+1):
+                    self.weights[l] -= η / minibatch_pool * w_grads[l]
+                    self.bias[l] -= η / minibatch_pool * b_grads[l]
+            else: 
+                γ = momentum 
+                for l in range(0, self.hidden_layer_n+1):
+                    v[l] = γ * v[l] + η / minibatch_pool * w_grads[l]
+                    self.weights[l] -= v[l]
+                    self.bias[l] -= η / minibatch_pool * b_grads[l]
+                    
+    def predict(self, input: list[np.ndarray]) -> list[np.ndarray]:
         """
         Predicts the output for a given input using the trained neural network.
 
@@ -449,36 +535,7 @@ class NeuralNetwork:
         return results
 
 
-if __name__ == "__main__":
-    x_train, y_train, x_test, y_test = prepare_data()
-    input_n = x_train.shape[1]
-    output_n = y_train.shape[1]
+def main():
+    return None
 
-    # net = NeuralNetwork([input_n,128, 64,output_n],
-    #                     cost_grad=lambda a, y: (a-y)/(a*(1-a)),
-    #                     activation_derivative=lambda a: a*(1-a))
 
-    net = NeuralNetwork([input_n, 128, 64, output_n])
-
-    validation_rate = []
-    for run in range(0, 500):
-        net.train(x_train, y_train, minibatch_pool=32, iterations=5, η=3)
-        results = net.predict(x_test)
-        rate = np.sum(
-            np.array(list(map(np.argmax, results)))
-            == np.array(list(map(np.argmax, y_test)))
-        )
-        validation_rate.append(rate / len(x_test) * 100)
-
-    plt.figure(figsize=(12, 8))
-    plt.plot(validation_rate, label=r"η=3", color="pink")
-    plt.title(r"Training: Epoch vrs. Validation Rate")
-    plt.xlabel("Epoch (5 x each)")
-    plt.ylabel("Validation Rate (%)")
-    x_ticks = np.arange(0, 1001, 100)
-    y_ticks = np.arange(0, 101, 10)
-    plt.xticks(x_ticks, labels=x_ticks.astype(str), minor=True)
-    plt.yticks(y_ticks, labels=y_ticks.astype(str), minor=True)
-    plt.grid()
-    plt.legend()
-    plt.show()

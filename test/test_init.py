@@ -1,13 +1,13 @@
 import numpy as np
 import pytest
 
-from src.neural_network import NeuralNetwork
+from neuralnet import NeuralNetwork
 
-
+@pytest.mark.order(2)
 def test_initialization() -> None:
     mock_x = np.array([np.random.randint(0, 10, 3) for _ in range(3)])
     mock_y = np.array([np.random.randint(0, 10, 3) for _ in range(3)])
-    net = NeuralNetwork(mock_x, mock_y, 3, [4, 3, 2])
+    net = NeuralNetwork([3, 4, 3, 2, 3])
 
     # check bweights:
     assert len(net.weights) == 4

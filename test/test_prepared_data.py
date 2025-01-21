@@ -2,11 +2,11 @@ import numpy as np
 import pytest
 import tensorflow as tf
 
-from src.neural_network import hot_encode, prepare_data
+from neuralnet import hot_encode, prepare_data
 
 output_length = 10
 
-
+@pytest.mark.order(1)
 def test_preparation_data():
     x_train, y_train, x_test, y_test = prepare_data()
 

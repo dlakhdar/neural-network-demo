@@ -1,30 +1,138 @@
-import numpy as np
+# Define the neural network
 import pytest
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.optim as optim
+from neuralnet import NeuralNetwork
 
-from src.neural_network import NeuralNetwork, feedforward
+torch.set_default_dtype(torch.float32)  # Set global default dtype to float64
+
+inputs = [[1.0, 2.0]]
+outputs = [[.5, .75]]
+
+layer_sizes = [2, 3, 4, 2]
+
+X = np.array(inputs, dtype=np.float32)
+Y = np.array(outputs, dtype=np.float32)
 
 
+class SimpleNN(nn.Module):
+    def __init__(self, layer_sizes):
+        super(SimpleNN, self).__init__()
+        self.layers = nn.ModuleList()
+        for i in range(len(layer_sizes) - 1):
+            self.layers.append(nn.Linear(layer_sizes[i], layer_sizes[i+1]))
+        self.activation = nn.Sigmoid()
+    
+    def forward(self, x):
+        for layer in self.layers:
+            x = self.activation(layer(x))
+        return x
+
+
+def mse_loss(W, a, b, y):
+    return 1/2*((W @ a) + b - y)**2
+
+@pytest.mark.order(5)
+def loss_descent(X, Y, net, trials):
+    X = np.array([[1, 2]])
+    Y = np.array([[.5, .75]])
+    net = NeuralNetwork(layer_sizes=[2, 1, 2])
+
+    y_pred = net.predict(Y)
+    initial_loss = (Y-y_pred)**2
+    initial_loss_mean = sum(initial_loss[0])/2
+    print(f"intial loss: {initial_loss_mean}")
+    loss_mean = 0
+    for _ in range(0,5):
+        net.train(X,Y,minibatch=False,iterations=1,η=5)
+        y_pred = net.predict(Y)
+        loss = (Y-y_pred)**2
+        loss_mean = sum(loss[0])/2
+
+    assert initial_loss_mean > loss_mean
+
+# 
+@pytest.mark.order(4)
 def test_backprop():
-    mock_x = np.array([[1, 2], [2, 3]])
-    mock_y = np.array([[1, 2], [2, 3]])
-    net = NeuralNetwork(mock_x, mock_y, 2, [2, 2])
+    # initialize my network
+    net = NeuralNetwork(layer_sizes=layer_sizes)
+    w_grads = [np.zeros(matrix.shape) for matrix in net.weights]
+    b_grads = [np.zeros(vector.shape) for vector in net.bias]
 
-    # reassign explicitly defined weight matrices
-    net.weights[0] = np.array([[0.5, 0.6], [0.8, 0.9]])
-    net.weights[1] = np.array([[0.3, 0.2], [0.7, 0.8]])
-    net.weights[2] = np.array([[0.1, 0.7], [0.2, 0.3]])
+    # Initialize the torch_net
+    torch_net = SimpleNN(layer_sizes=layer_sizes)
 
-    # reassign explicitly defined bias matrices
-    net.bias[0] = np.array([0.3, 0.4])
-    net.bias[1] = np.array([0.4, 0.8])
-    net.bias[2] = np.array([0.5, 0.9])
+    with torch.no_grad():  # Disable gradient computation during assignment
+        for i, layer in enumerate(torch_net.layers):
+            layer.weight = nn.Parameter(torch.from_numpy(net.weights[i]).float())
+            layer.bias = nn.Parameter(torch.from_numpy(net.bias[i]).float())
 
-    # check feedforward result same as "hand calculated"
+    # Define the loss function and optimizer
+    criterion = nn.MSELoss()
+    optimizer = optim.SGD(torch_net.parameters(), lr=0.01)
 
-    output = feedforward(
-        mock_x[0], net.activation_f, net.layer_n - 1, net.weights, net.bias
-    )
-    print(output)
+    # Forward pass
+    torch_output = torch_net(torch.from_numpy(X))
 
-    output_error = (output - mock_y[0]) * net.activation_df(output)
-    print(output_error)
+    # Compute the loss
+    loss = criterion(torch_output, torch.from_numpy(Y))
+
+    # Backward pass
+    optimizer.zero_grad()
+    loss.backward()
+
+    # # Retrieve gradients
+    # print("Gradients:")
+    # for name, param in torch_net.named_parameters():
+    #     if param.grad is not None:
+    #         print(f"{name} - grad:\n{param.grad}")
+
+    for x, y in zip(X, Y):
+        # print("x id:",id(x))
+        z0 = net.weights[0] @ x + net.bias[0]
+        zs = [z0]
+        a0 = net.activation_f(z0)
+        activations = [a0]
+        for l in range(1, net.layer_n - 1, 1):
+            # print("layers:",l,l-1)
+            zl = net.weights[l] @ activations[l - 1] + net.bias[l]
+            activation = net.activation_f(zl)
+            # print("activation:", activation)
+            zs.append(zl)
+            activations.append(activation)
+
+        z_output = zs[-1]
+        a_output = activations[-1]
+        output_error = net.cost_grad(a_output, y) * net.activation_df(
+                        z_output
+                    )
+        errors = [output_error]
+        for l in range(net.hidden_layer_n, 0, -1):
+            error = (net.weights[l].T @ errors[-1] * net.activation_df(zs[l - 1]))
+            errors.append(error)
+
+        errors.reverse()
+                    # compute sum of error
+        for l in range(0, net.hidden_layer_n + 1, 1):
+            w_grads[l] += np.outer(
+                            errors[l], activations[l - 1] if l > 0 else x
+                        )
+                        # print(w_grads)
+            b_grads[l] += errors[l]
+
+
+    # i = 0
+    # for (w_grad, b_grad) in zip(w_grads,b_grads):
+    #     print(f"layer {i} - grad:\n{w_grad, b_grad}")
+    #     i += 1
+
+
+    torch_grads = list(torch_net.named_parameters())
+    # Loop through the gradients and compare
+    for i in range(len(w_grads)):
+        # Compare weight gradients
+        assert np.allclose(w_grads[i], torch_grads[2 * i][1].grad.numpy()), f"Weight gradient mismatch at layer {i}"
+        # Compare bias gradients
+        assert np.allclose(b_grads[i], torch_grads[2 * i + 1][1].grad.numpy()), f"Bias gradient mismatch at layer {i}"
