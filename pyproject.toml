@@ -62,7 +62,7 @@ content-type = "text/markdown"
 # creates a command-line script named neuralnet that runs the main function defined
 # in the __main__.py file of your package when executed.
 #[project.scripts]
-#neuralnet = "__main__:main" 
+#neuralnet = "__main__:main"
 
 
 [tool.isort]

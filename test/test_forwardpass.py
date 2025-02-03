@@ -1,12 +1,19 @@
 import numpy as np
 import pytest
-from neuralnet import NeuralNetwork, feedforward, sigmoid
+
+from neuralnet import NeuralNetwork, feedforward
+from neuralnet.activations import sigmoid, derivative_sigmoid
+from neuralnet.losses import mse_grad
 
 
 @pytest.mark.order(3)
 def test_feedforward():
-    mock_x = np.array([[1, 2]])
-    net = NeuralNetwork([2, 2, 2, 2])
+    mock_x = np.array([[1.0, 2.0]], dtype=np.float64)
+    net = NeuralNetwork([2, 2, 2, 2],
+                        activation_function=sigmoid,
+                        activation_derivative=derivative_sigmoid,
+                        cost_function=None,
+                        cost_grad=mse_grad)
 
     # reassign explicitly defined weight matrices
     net.weights[0] = np.array([[0.5, 0.6], [0.8, 0.9]])
@@ -26,7 +33,7 @@ def test_feedforward():
 
     assert np.array_equal(
         feedforward(
-            mock_x[0], net.activation_f, net.layer_n - 1, net.weights, net.bias
+            mock_x[0], net.weights, net.bias, net.activation_f
         ),
         activation,
     )

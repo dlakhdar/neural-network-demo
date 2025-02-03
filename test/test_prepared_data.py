@@ -1,8 +1,7 @@
 import numpy as np
 import pytest
-import tensorflow as tf
-
-from neuralnet import hot_encode, prepare_data
+from neuralnet.preprocess import hot_encode, prepare_data
+from neuralnet.activations import sigmoid
 
 output_length = 10
 
